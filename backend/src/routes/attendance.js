@@ -1,0 +1,150 @@
+import { Router } from 'express';
+import { pool } from '../db.js';
+import { authenticate, allowRoles } from '../middleware/auth.js';
+
+const router = Router();
+router.use(authenticate);
+
+function validDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+}
+
+async function canAccessClass(user, classId) {
+  if (user.role === 'admin') return true;
+  if (user.role !== 'teacher') return false;
+  const [rows] = await pool.execute(
+    'SELECT 1 FROM teacher_classes tc JOIN teachers t ON t.id=tc.teacher_id WHERE tc.class_id=? AND t.user_id=?',
+    [classId, user.id]
+  );
+  return rows.length > 0;
+}
+
+router.get('/mine', async (req, res, next) => {
+  try {
+    if (req.user.role !== 'student') {
+      return res.status(403).json({
+        message: 'This endpoint is for students only.'
+      });
+    }
+
+    const { classId, date } = req.query;
+
+    if (!classId || !date) {
+      return res.status(400).json({
+        message: 'Class and date are required.'
+      });
+    }
+
+    if (
+      !/^\d+$/.test(String(classId)) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(String(date))
+    ) {
+      return res.status(400).json({
+        message: 'Invalid class or date.'
+      });
+    }
+
+    const [rows] = await pool.execute(
+      `SELECT
+         c.id AS classId,
+         c.class_code AS classCode,
+         c.class_name AS className,
+         c.section,
+         a.attendance_date AS attendanceDate,
+         a.status
+       FROM students s
+       JOIN enrollments e ON e.student_id = s.id
+       JOIN classes c ON c.id = e.class_id
+       LEFT JOIN attendance a
+         ON a.student_id = s.id
+         AND a.class_id = c.id
+         AND a.attendance_date = ?
+       WHERE s.user_id = ?
+         AND c.id = ?
+       LIMIT 1`,
+      [date, req.user.id, Number(classId)]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        message: 'You are not enrolled in this class.'
+      });
+    }
+
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+router.get('/', async (req, res, next) => {
+  try {
+    const classId = Number(req.query.classId);
+    const date = req.query.date;
+    if (!Number.isInteger(classId) || classId < 1 || !validDate(date)) {
+      return res.status(400).json({ message: 'Valid classId and date (YYYY-MM-DD) are required.' });
+    }
+    if (!(await canAccessClass(req.user, classId))) {
+      return res.status(403).json({ message: 'Only an assigned teacher or administrator can view class attendance.' });
+    }
+    const [rows] = await pool.execute(
+      `SELECT s.id AS studentId,s.student_number AS studentNumber,s.full_name AS studentName,
+              a.status,a.attendance_date AS attendanceDate
+       FROM enrollments e JOIN students s ON s.id=e.student_id
+       LEFT JOIN attendance a ON a.student_id=s.id AND a.class_id=e.class_id AND a.attendance_date=?
+       WHERE e.class_id=? ORDER BY s.student_number`,
+      [date, classId]
+    );
+    res.json(rows);
+  } catch (err) { next(err); }
+});
+
+router.post('/', allowRoles('teacher','admin'), async (req, res, next) => {
+  const connection = await pool.getConnection();
+  try {
+    const { classId, date, records } = req.body || {};
+    const id = Number(classId);
+    if (!Number.isInteger(id) || id < 1 || !validDate(date) || !Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ message: 'classId, date (YYYY-MM-DD), and a non-empty records array are required.' });
+    }
+    if (!(await canAccessClass(req.user, id))) return res.status(403).json({ message: 'Class is not assigned to you.' });
+    const studentIds = records.map(r => Number(r.studentId));
+    if (studentIds.some(n => !Number.isInteger(n) || n < 1) ||
+        records.some(r => !['present','absent'].includes(r.status)) ||
+        new Set(studentIds).size !== studentIds.length) {
+      return res.status(400).json({ message: 'Each student must have one valid present/absent status.' });
+    }
+    const [enrolled] = await pool.execute(
+      `SELECT student_id FROM enrollments WHERE class_id=? AND student_id IN (${studentIds.map(() => '?').join(',')})`,
+      [id, ...studentIds]
+    );
+    if (enrolled.length !== studentIds.length) return res.status(400).json({ message: 'One or more students are not enrolled in this class.' });
+
+    await connection.beginTransaction();
+    for (const record of records) {
+      await connection.execute(
+  `INSERT INTO attendance
+   (class_id, student_id, attendance_date, status, marked_by)
+   VALUES (?, ?, ?, ?, ?)
+   ON DUPLICATE KEY UPDATE
+   status = VALUES(status),
+   marked_by = VALUES(marked_by)`,
+  [
+    id,
+    Number(record.studentId),
+    date,
+    record.status,
+    req.user.id
+  ]
+);
+    }
+    await connection.commit();
+    res.status(201).json({ message: 'Attendance saved.', count: records.length });
+  } catch (err) {
+    await connection.rollback();
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Attendance already exists for at least one student on this class/date. No new records were saved.' });
+    next(err);
+  } finally { connection.release(); }
+});
+
+export default router;
