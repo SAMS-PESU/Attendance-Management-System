@@ -1,3 +1,4 @@
+
 # SAMS Sprint 1 Starter
 
 Starter implementation for the SAMS Student Attendance Management System, using:
@@ -77,3 +78,6 @@ Open the URL printed by Vite (usually http://localhost:5173).
 - Tanvi's, Parnika's, Manav's, and Merwyn's actual feature issue assignments remain the GitHub board's source of truth.
 
 See `docs/SPRINT1_TASKS.md` for a clear issue-by-issue plan.
+=======
+# Attendance-Management-System
+>>>>>>> origin/main
