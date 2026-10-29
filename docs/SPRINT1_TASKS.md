@@ -18,7 +18,7 @@ Sprint dates in the project plan: 19–23 October 2026. Confirm with the guide i
 ## Role allocation proposed in discussion
 - Scrum Master: Machamma Parnika — coordinate planning, progress, blockers, review, and retrospective. Also implement assigned issue #6.
 - QA Lead: Magalur Tanvi, only if team agrees to the reassignment; prepare tests and evidence, and implement assigned issues #5 and #9.
-- Product Owner: Merwyn Prince Lobo — clarify requirements, acceptance criteria, and review assigned issues #4, #12, #13.
+- Product Owner: Merwyn Prince Lobo — clarify requirements, acceptance criteria, and implement/review assigned issues #4, #12, #13, #15, and #20.
 - Tech Lead: Manav Dewangan — architecture, database/API decisions, code review, integration, and implementation of assigned issues #1, #2, #3, #16.
 Role duties do not replace issue ownership: each assigned owner is responsible for implementation; all members help test/integrate.
 
@@ -29,6 +29,7 @@ Role duties do not replace issue ownership: each assigned owner is responsible f
 - [ ] Admin-only operations reject teacher/student accounts.
 - [ ] Admin can create classes, students, teachers, and assign/enrol them.
 - [ ] Teacher can see assigned classes and enrolled students.
+- [ ] Teacher dashboard shows attendance summaries and flags students below the configured attendance criterion.
 - [ ] Teacher can view attendance by class/date and mark enrolled students.
 - [ ] Duplicate attendance for the same class/student/date is rejected.
 - [ ] GitHub Actions workflow runs on push and pull request.
