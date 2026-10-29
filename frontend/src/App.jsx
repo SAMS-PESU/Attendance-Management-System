@@ -224,46 +224,51 @@ export default function App() {
     <section className="panel">
       <h2>View attendance by class and date</h2>
       <p className="muted">Select a class and date to view or mark attendance for enrolled students.</p>
-      <div className="filters">
-        
-<label>
-  Class
-  <select
-    value={classId}
-    onChange={e => {
-      setClassId(e.target.value);
-      setRecords([]);
-      setMessage('');
-    }}
-    required
-  >
-    <option value="">Select a class</option>
-    {classes.map(c => (
-      <option key={c.id} value={c.id}>
-        {c.class_code} — {c.class_name}
-        {c.section ? ` (${c.section})` : ''}
-      </option>
-    ))}
-  </select>
-</label>
+     
+<div className="filters">
+  <label>
+    Class
+    <select
+      value={classId}
+      onChange={e => {
+        setClassId(e.target.value);
+        setRecords([]);
+        setMessage('');
+      }}
+      required
+    >
+      <option value="">Select a class</option>
+      {classes.map(c => (
+        <option key={c.id} value={c.id}>
+          {c.class_code} — {c.class_name}
+          {c.section ? ` (${c.section})` : ''}
+        </option>
+      ))}
+    </select>
+  </label>
 
-          <option value="">Select a class</option>{classes.map(c => <option key={c.id} value={c.id}>{c.class_code} — {c.class_name}{c.section ? ` (${c.section})` : ''}</option>)}
-        </select></label>
-        <label>
-  Date
-  <input
-    type="date"
-    value={date}
-    onChange={e => {
-      setDate(e.target.value);
-      setRecords([]);
-      setMessage('');
-    }}
-    required
-  />
-</label>
-        <button onClick={loadAttendance} disabled={busy || !classId}>{busy ? 'Loading…' : 'View attendance'}</button>
-      </div>
+  <label>
+    Date
+    <input
+      type="date"
+      value={date}
+      onChange={e => {
+        setDate(e.target.value);
+        setRecords([]);
+        setMessage('');
+      }}
+      required
+    />
+  </label>
+
+  <button
+    onClick={loadAttendance}
+    disabled={busy || !classId}
+  >
+    {busy ? 'Loading…' : 'View attendance'}
+  </button>
+</div>
+
       {message && <p className="notice">{message}</p>}
       {records.length > 0 && <>
         <div className="table-wrap">
