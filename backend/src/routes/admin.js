@@ -6,6 +6,13 @@ import { authenticate, allowRoles } from '../middleware/auth.js';
 const router = Router();
 router.use(authenticate, allowRoles('admin'));
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseId(value) {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 router.get('/students', async (_req, res, next) => {
   try {
     const [rows] = await pool.execute(
@@ -23,6 +30,206 @@ router.get('/teachers', async (_req, res, next) => {
     res.json(rows);
   } catch (err) { next(err); }
 });
+
+async function updatePerson(req, res, next, { table, identifierColumn }) {
+  const id = parseId(req.params.id);
+  const identifier = req.body?.[identifierColumn];
+  const fullName = req.body?.full_name;
+  const rawEmail = req.body?.email;
+
+  if (!id) return res.status(400).json({ message: 'A valid record ID is required.' });
+  if (typeof identifier !== 'string' || !identifier.trim() ||
+      typeof fullName !== 'string' || !fullName.trim()) {
+    return res.status(400).json({ message: `${identifierColumn} and full_name are required.` });
+  }
+  if (rawEmail != null && typeof rawEmail !== 'string') {
+    return res.status(400).json({ message: 'Email must be a valid email address.' });
+  }
+
+  const email = rawEmail?.trim().toLowerCase() || null;
+  if (email && !EMAIL_REGEX.test(email)) {
+    return res.status(400).json({ message: 'Email must be a valid email address.' });
+  }
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [existing] = await connection.execute(
+      `SELECT user_id FROM ${table} WHERE id = ? FOR UPDATE`,
+      [id]
+    );
+    if (!existing.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Record not found.' });
+    }
+
+    const userId = existing[0].user_id;
+    if (userId && !email) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(400).json({ message: 'Email is required for a linked user account.' });
+    }
+
+    await connection.execute(
+      `UPDATE ${table} SET ${identifierColumn} = ?, full_name = ?, email = ? WHERE id = ?`,
+      [identifier.trim(), fullName.trim(), email, id]
+    );
+    if (userId) {
+      await connection.execute(
+        'UPDATE users SET name = ?, email = ? WHERE id = ?',
+        [fullName.trim(), email, userId]
+      );
+    }
+
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({ message: 'Record updated successfully.' });
+  } catch (err) {
+    if (transactionStarted) await connection.rollback();
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ message: 'The identifier or email is already in use.' });
+    }
+    return next(err);
+  } finally {
+    connection?.release();
+  }
+}
+
+async function deleteUnreferencedRecord(req, res, next, { table, references, linkedUser = false }) {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ message: 'A valid record ID is required.' });
+
+  let connection;
+  let transactionStarted = false;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [records] = await connection.execute(
+      `SELECT id${linkedUser ? ', user_id' : ''} FROM ${table} WHERE id = ? FOR UPDATE`,
+      [id]
+    );
+    if (!records.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Record not found.' });
+    }
+
+    for (const { table: referenceTable, column } of references) {
+      const [rows] = await connection.execute(
+        `SELECT COUNT(*) AS count FROM ${referenceTable} WHERE ${column} = ?`,
+        [id]
+      );
+      if (Number(rows[0].count) > 0) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({
+          message: `This record cannot be deleted while it has related ${referenceTable} records.`
+        });
+      }
+    }
+
+    if (linkedUser && records[0].user_id) {
+      const [attendance] = await connection.execute(
+        'SELECT COUNT(*) AS count FROM attendance WHERE marked_by = ?',
+        [records[0].user_id]
+      );
+      if (Number(attendance[0].count) > 0) {
+        await connection.rollback();
+        transactionStarted = false;
+        return res.status(409).json({
+          message: 'This record cannot be deleted because its user account marked attendance.'
+        });
+      }
+    }
+
+    await connection.execute(`DELETE FROM ${table} WHERE id = ?`, [id]);
+    if (linkedUser && records[0].user_id) {
+      await connection.execute('DELETE FROM users WHERE id = ?', [records[0].user_id]);
+    }
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({ message: 'Record deleted successfully.' });
+  } catch (err) {
+    if (transactionStarted) await connection.rollback();
+    if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({ message: 'This record cannot be deleted while it has related records.' });
+    }
+    return next(err);
+  } finally {
+    connection?.release();
+  }
+}
+
+router.put('/students/:id', (req, res, next) =>
+  updatePerson(req, res, next, { table: 'students', identifierColumn: 'student_number' })
+);
+
+router.put('/teachers/:id', (req, res, next) =>
+  updatePerson(req, res, next, { table: 'teachers', identifierColumn: 'employee_number' })
+);
+
+router.put('/classes/:id', async (req, res, next) => {
+  const id = parseId(req.params.id);
+  const { class_code, class_name, section = null } = req.body || {};
+  if (!id) return res.status(400).json({ message: 'A valid class ID is required.' });
+  if (typeof class_code !== 'string' || !class_code.trim() ||
+      typeof class_name !== 'string' || !class_name.trim()) {
+    return res.status(400).json({ message: 'class_code and class_name are required.' });
+  }
+  if (section != null && typeof section !== 'string') {
+    return res.status(400).json({ message: 'section must be a string.' });
+  }
+  try {
+    const [existing] = await pool.execute('SELECT id FROM classes WHERE id = ?', [id]);
+    if (!existing.length) return res.status(404).json({ message: 'Class not found.' });
+    const cleanSection = section?.trim() || null;
+    await pool.execute(
+      'UPDATE classes SET class_code = ?, class_name = ?, section = ? WHERE id = ?',
+      [class_code.trim(), class_name.trim(), cleanSection, id]
+    );
+    return res.json({ message: 'Class updated successfully.' });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Class code already exists.' });
+    return next(err);
+  }
+});
+
+router.delete('/classes/:id', (req, res, next) =>
+  deleteUnreferencedRecord(req, res, next, {
+    table: 'classes',
+    references: [
+      { table: 'teacher_classes', column: 'class_id' },
+      { table: 'enrollments', column: 'class_id' },
+      { table: 'attendance', column: 'class_id' }
+    ]
+  })
+);
+
+router.delete('/students/:id', (req, res, next) =>
+  deleteUnreferencedRecord(req, res, next, {
+    table: 'students',
+    references: [
+      { table: 'enrollments', column: 'student_id' },
+      { table: 'attendance', column: 'student_id' }
+    ],
+    linkedUser: true
+  })
+);
+
+router.delete('/teachers/:id', (req, res, next) =>
+  deleteUnreferencedRecord(req, res, next, {
+    table: 'teachers',
+    references: [{ table: 'teacher_classes', column: 'teacher_id' }],
+    linkedUser: true
+  })
+);
 
 router.post('/students', async (req, res, next) => {
   try {
