@@ -1,0 +1,58 @@
+SAMS attendance API test run - 2026-10-29 11:03:03
+Endpoint: POST http://localhost:5000/api/attendance
+----------------------------------------------------------------------
+[PASS] TC-ATT-01  No token
+       expected: HTTP 401 containing 'Authentication required'
+       actual  : HTTP 401 {"message":"Authentication required."}
+[PASS] TC-ATT-02  Student role
+       expected: HTTP 403 containing ''
+       actual  : HTTP 403 {"message":"You do not have permission for this action."}
+[PASS] TC-ATT-03  Class not assigned
+       expected: HTTP 403 containing 'not assigned'
+       actual  : HTTP 403 {"message":"This class is not assigned to you."}
+[PASS] TC-ATT-04  Class does not exist
+       expected: HTTP 403 containing 'not assigned'
+       actual  : HTTP 403 {"message":"This class is not assigned to you."}
+[PASS] TC-ATT-05  Invalid status 'late'
+       expected: HTTP 400 containing 'status must be'
+       actual  : HTTP 400 {"message":"status must be 'present' or 'absent'."}
+[PASS] TC-ATT-06  Impossible date 2026-13-45
+       expected: HTTP 400 containing 'date must be'
+       actual  : HTTP 400 {"message":"date must be a real date in YYYY-MM-DD format."}
+[PASS] TC-ATT-07  Wrong date format
+       expected: HTTP 400 containing 'date must be'
+       actual  : HTTP 400 {"message":"date must be a real date in YYYY-MM-DD format."}
+[PASS] TC-ATT-08  Empty records
+       expected: HTTP 400 containing 'non-empty array'
+       actual  : HTTP 400 {"message":"records must be a non-empty array."}
+[PASS] TC-ATT-09  Same student twice
+       expected: HTTP 400 containing 'twice'
+       actual  : HTTP 400 {"message":"A student cannot appear twice in one request."}
+[PASS] TC-ATT-10  Missing classId
+       expected: HTTP 400 containing 'classId'
+       actual  : HTTP 400 {"message":"classId must be a positive whole number."}
+[PASS] TC-ATT-11  Student not enrolled
+       expected: HTTP 400 containing 'not enrolled'
+       actual  : HTTP 400 {"message":"One or more students are not enrolled in this class."}
+[PASS] TC-ATT-12  One enrolled, one not
+       expected: HTTP 400 containing 'not enrolled'
+       actual  : HTTP 400 {"message":"One or more students are not enrolled in this class."}
+[PASS] TC-ATT-13  First save
+       expected: HTTP 201 containing 'Attendance saved'
+       actual  : HTTP 201 {"message":"Attendance saved.","count":2}
+[PASS] TC-ATT-14  Exact repeat rejected
+       expected: HTTP 409 containing 'already exists'
+       actual  : HTTP 409 {"message":"Attendance already exists for this class and date. Nothing was saved.","duplicateStudentIds":[1,2]}
+[PASS] TC-ATT-15  Different date allowed
+       expected: HTTP 201 containing 'Attendance saved'
+       actual  : HTTP 201 {"message":"Attendance saved.","count":2}
+[PASS] TC-ATT-16  One student, new date
+       expected: HTTP 201 containing 'Attendance saved'
+       actual  : HTTP 201 {"message":"Attendance saved.","count":1}
+[PASS] TC-ATT-17  Partial overlap rejected
+       expected: HTTP 409 containing 'already exists'
+       actual  : HTTP 409 {"message":"Attendance already exists for this class and date. Nothing was saved.","duplicateStudentIds":[1]}
+----------------------------------------------------------------------
+Passed: 17   Failed: 0   Total: 17
+TC-ATT-18 (database check) is manual: run the SELECT from the evidence file in MySQL.
+Log saved to: attendance-test-run-20261029-110303.txt
