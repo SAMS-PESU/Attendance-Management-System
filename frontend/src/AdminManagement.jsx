@@ -25,6 +25,8 @@ export default function AdminManagement({ token }) {
   const [classId, setClassId] = useState('');
   const [studentId, setStudentId] = useState('');
   const [teacherId, setTeacherId] = useState('');
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({});
 
   async function api(path, options = {}) {
     const response = await fetch(`${API}${path}`, {
@@ -45,22 +47,72 @@ export default function AdminManagement({ token }) {
       api('/classes'), api('/students'), api('/teachers')
     ]);
     setClasses(c); setStudents(s); setTeachers(t);
-    if (!classId && c.length) setClassId(String(c[0].id));
-    if (!studentId && s.length) setStudentId(String(s[0].id));
-    if (!teacherId && t.length) setTeacherId(String(t[0].id));
+    setClassId(current => c.some(item => String(item.id) === current) ? current : (c[0] ? String(c[0].id) : ''));
+    setStudentId(current => s.some(item => String(item.id) === current) ? current : (s[0] ? String(s[0].id) : ''));
+    setTeacherId(current => t.some(item => String(item.id) === current) ? current : (t[0] ? String(t[0].id) : ''));
   }
 
   useEffect(() => { refresh().catch(err => setMessage(err.message)); }, [token]);
 
-  async function submit(path, body, reset) {
+  async function submit(path, body, reset, method = 'POST') {
     setBusy(true); setMessage('');
     try {
-      const result = await api(path, { method: 'POST', body: JSON.stringify(body) });
+      const result = await api(path, { method, body: JSON.stringify(body) });
       setMessage(result.message || 'Saved successfully.');
       reset?.();
       await refresh();
     } catch (err) { setMessage(err.message); }
     finally { setBusy(false); }
+  }
+
+  function startEdit(type, record) {
+    setEditing({ type, id: record.id });
+    setEditForm({
+      class_code: record.class_code || '',
+      class_name: record.class_name || '',
+      section: record.section || '',
+      student_number: record.student_number || '',
+      employee_number: record.employee_number || '',
+      full_name: record.full_name || '',
+      email: record.email || ''
+    });
+  }
+
+  function saveEdit(event) {
+    event.preventDefault();
+    const type = editing.type;
+    const collection = type === 'class' ? 'classes' : `${type}s`;
+    const path = `/${collection}/${editing.id}`;
+    const body = type === 'class'
+      ? { class_code: editForm.class_code, class_name: editForm.class_name, section: editForm.section }
+      : {
+          [type === 'student' ? 'student_number' : 'employee_number']:
+            type === 'student' ? editForm.student_number : editForm.employee_number,
+          full_name: editForm.full_name,
+          email: editForm.email
+        };
+    submit(path, body, () => setEditing(null), 'PUT');
+  }
+
+  async function deleteRecord(type, record) {
+    const collection = type === 'class' ? 'classes' : `${type}s`;
+    const label = type === 'class'
+      ? `${record.class_code} — ${record.class_name}`
+      : `${type === 'student' ? record.student_number : record.employee_number} — ${record.full_name}`;
+    if (!window.confirm(`Delete ${label}? Records with related class, enrollment, or attendance data cannot be deleted.`)) return;
+
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api(`/${collection}/${record.id}`, { method: 'DELETE' });
+      setMessage(result.message || 'Record deleted successfully.');
+      if (editing?.type === type && editing.id === record.id) setEditing(null);
+      await refresh();
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (!token) return null;
@@ -245,9 +297,39 @@ export default function AdminManagement({ token }) {
       </form>
     </div>
     <div className="admin-lists">
-      <div><h3>Classes ({classes.length})</h3><ul>{classes.map(c=><li key={c.id}>{c.class_code} — {c.class_name} {c.section ? `(${c.section})` : ''} <small>ID: {c.id}</small></li>)}</ul></div>
-      <div><h3>Students ({students.length})</h3><ul>{students.map(s=><li key={s.id}>{s.student_number} — {s.full_name} <small>ID: {s.id}</small></li>)}</ul></div>
-      <div><h3>Teachers ({teachers.length})</h3><ul>{teachers.map(t=><li key={t.id}>{t.employee_number} — {t.full_name} <small>ID: {t.id}</small></li>)}</ul></div>
+      <div><h3>Classes ({classes.length})</h3><ul>{classes.map(c=><li className="admin-record" key={c.id}>
+        {editing?.type === 'class' && editing.id === c.id ? <form className="admin-edit-form" onSubmit={saveEdit}>
+          <label>Class code<input required value={editForm.class_code} onChange={e=>setEditForm({...editForm,class_code:e.target.value})} /></label>
+          <label>Class name<input required value={editForm.class_name} onChange={e=>setEditForm({...editForm,class_name:e.target.value})} /></label>
+          <label>Section<input value={editForm.section} onChange={e=>setEditForm({...editForm,section:e.target.value})} /></label>
+          <button disabled={busy}>Save</button><button type="button" className="admin-secondary" disabled={busy} onClick={()=>setEditing(null)}>Cancel</button>
+        </form> : <div className="admin-record-summary">
+          <span>{c.class_code} — {c.class_name} {c.section ? `(${c.section})` : ''} <small>ID: {c.id}</small></span>
+          <span className="admin-record-actions"><button type="button" className="admin-secondary" disabled={busy} onClick={()=>startEdit('class',c)}>Edit</button><button type="button" className="admin-danger" disabled={busy} onClick={()=>deleteRecord('class',c)}>Delete</button></span>
+        </div>}
+      </li>)}</ul></div>
+      <div><h3>Students ({students.length})</h3><ul>{students.map(s=><li className="admin-record" key={s.id}>
+        {editing?.type === 'student' && editing.id === s.id ? <form className="admin-edit-form" onSubmit={saveEdit}>
+          <label>Student number<input required value={editForm.student_number} onChange={e=>setEditForm({...editForm,student_number:e.target.value})} /></label>
+          <label>Full name<input required value={editForm.full_name} onChange={e=>setEditForm({...editForm,full_name:e.target.value})} /></label>
+          <label>Email<input type="email" value={editForm.email} onChange={e=>setEditForm({...editForm,email:e.target.value})} /></label>
+          <button disabled={busy}>Save</button><button type="button" className="admin-secondary" disabled={busy} onClick={()=>setEditing(null)}>Cancel</button>
+        </form> : <div className="admin-record-summary">
+          <span>{s.student_number} — {s.full_name} <small>ID: {s.id}</small></span>
+          <span className="admin-record-actions"><button type="button" className="admin-secondary" disabled={busy} onClick={()=>startEdit('student',s)}>Edit</button><button type="button" className="admin-danger" disabled={busy} onClick={()=>deleteRecord('student',s)}>Delete</button></span>
+        </div>}
+      </li>)}</ul></div>
+      <div><h3>Teachers ({teachers.length})</h3><ul>{teachers.map(t=><li className="admin-record" key={t.id}>
+        {editing?.type === 'teacher' && editing.id === t.id ? <form className="admin-edit-form" onSubmit={saveEdit}>
+          <label>Employee number<input required value={editForm.employee_number} onChange={e=>setEditForm({...editForm,employee_number:e.target.value})} /></label>
+          <label>Full name<input required value={editForm.full_name} onChange={e=>setEditForm({...editForm,full_name:e.target.value})} /></label>
+          <label>Email<input type="email" value={editForm.email} onChange={e=>setEditForm({...editForm,email:e.target.value})} /></label>
+          <button disabled={busy}>Save</button><button type="button" className="admin-secondary" disabled={busy} onClick={()=>setEditing(null)}>Cancel</button>
+        </form> : <div className="admin-record-summary">
+          <span>{t.employee_number} — {t.full_name} <small>ID: {t.id}</small></span>
+          <span className="admin-record-actions"><button type="button" className="admin-secondary" disabled={busy} onClick={()=>startEdit('teacher',t)}>Edit</button><button type="button" className="admin-danger" disabled={busy} onClick={()=>deleteRecord('teacher',t)}>Delete</button></span>
+        </div>}
+      </li>)}</ul></div>
     </div>
   </section>;
 }

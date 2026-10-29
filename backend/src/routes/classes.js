@@ -50,12 +50,24 @@ router.get('/:id/students', async (req, res, next) => {
 router.post('/', authenticate, allowRoles('admin'), async (req, res, next) => {
   try {
     const { class_code, class_name, section = null } = req.body || {};
-    if (!class_code || !class_name) return res.status(400).json({ message: 'class_code and class_name are required.' });
+    if (typeof class_code !== 'string' || !class_code.trim() ||
+        typeof class_name !== 'string' || !class_name.trim()) {
+      return res.status(400).json({ message: 'class_code and class_name are required.' });
+    }
+    if (section != null && typeof section !== 'string') {
+      return res.status(400).json({ message: 'section must be a string.' });
+    }
+    const cleanSection = section?.trim() || null;
     const [result] = await pool.execute(
       'INSERT INTO classes (class_code,class_name,section) VALUES (?,?,?)',
-      [class_code, class_name, section]
+      [class_code.trim(), class_name.trim(), cleanSection]
     );
-    res.status(201).json({ id: result.insertId, class_code, class_name, section });
+    res.status(201).json({
+      id: result.insertId,
+      class_code: class_code.trim(),
+      class_name: class_name.trim(),
+      section: cleanSection
+    });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'Class code already exists.' });
     next(err);

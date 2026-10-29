@@ -1,6 +1,8 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { pool } from '../src/db.js';
+
+after(() => pool.end());
 
 test('AMS-002 Issue #2: Database and Core Schema Integrity', async (t) => {
   let dbConnected = false;
