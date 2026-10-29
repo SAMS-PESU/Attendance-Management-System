@@ -6,8 +6,24 @@ const router = Router();
 router.use(authenticate);
 
 function validDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-    !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value)
+  ) {
+    return false;
+  }
+
+  const [year, month, day] = value.split('-').map(Number);
+
+  const parsedDate = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  return (
+    parsedDate.getUTCFullYear() === year &&
+    parsedDate.getUTCMonth() === month - 1 &&
+    parsedDate.getUTCDate() === day
+  );
 }
 
 async function canAccessClass(user, classId) {
