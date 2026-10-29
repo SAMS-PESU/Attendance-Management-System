@@ -12,6 +12,10 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [classes, setClasses] = useState([]);
   const [classId, setClassId] = useState('');
+  const [dashboard, setDashboard] = useState(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState('');
+  const [attendanceThreshold, setAttendanceThreshold] = useState(75);
   const [date, setDate] = useState(today);
   const [records, setRecords] = useState([]);
   const [message, setMessage] = useState('');
@@ -65,6 +69,7 @@ export default function App() {
     setUser(null);
     setClasses([]);
     setRecords([]);
+    setDashboard(null);
     setMessage('');
   }
 
@@ -89,10 +94,36 @@ export default function App() {
     request('/classes')
       .then(list => {
         setClasses(list);
-        if (list.length) setClassId(String(list[0].id));
+        setClassId(current => list.some(item => String(item.id) === current)
+          ? current
+          : (list[0] ? String(list[0].id) : ''));
       })
       .catch(err => setMessage(err.message));
   }, [token, user]);
+
+  useEffect(() => {
+    if (!token || user?.role !== 'teacher' || !classId) {
+      setDashboard(null);
+      setDashboardLoading(false);
+      setDashboardError('');
+      return;
+    }
+
+    const controller = new AbortController();
+    setDashboard(null);
+    setDashboardError('');
+    setDashboardLoading(true);
+    request(`/attendance/dashboard?classId=${encodeURIComponent(classId)}`, { signal: controller.signal })
+      .then(setDashboard)
+      .catch(err => {
+        if (!controller.signal.aborted) setDashboardError(err.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDashboardLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [token, user?.role, classId]);
 
   async function loadAttendance() {
     if (!classId || !date) {
@@ -166,6 +197,13 @@ export default function App() {
       setBusy(false);
     }
   }
+
+  const selectedClass = classes.find(item => String(item.id) === classId);
+  const validAttendanceThreshold = Number.isFinite(attendanceThreshold) &&
+    attendanceThreshold >= 0 && attendanceThreshold <= 100;
+  const studentsBelowCriterion = validAttendanceThreshold && dashboard?.totalClasses > 0
+    ? dashboard.students.filter(student => student.attendancePercentage < attendanceThreshold)
+    : [];
 
   if (!token || !user) return <main className="login-shell">
     <form className="panel login" onSubmit={login}>
@@ -268,6 +306,74 @@ export default function App() {
     {busy ? 'Loading…' : 'View attendance'}
   </button>
 </div>
+
+      {user.role === 'teacher' && <section className="class-roster" aria-live="polite">
+        <div className="dashboard-heading">
+          <div>
+            <h3>Class dashboard{selectedClass && ` · ${selectedClass.class_code}`}</h3>
+            {dashboard && <p className="muted">{dashboard.totalClasses} attendance sessions recorded.</p>}
+          </div>
+          <label className="threshold-control">
+            Attendance criterion (%)
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={attendanceThreshold}
+              onChange={e => setAttendanceThreshold(e.target.value === '' ? '' : Number(e.target.value))}
+              aria-invalid={!validAttendanceThreshold}
+            />
+          </label>
+        </div>
+        {dashboardLoading && <p className="muted">Loading class dashboard…</p>}
+        {dashboardError && <p className="notice error">{dashboardError}</p>}
+        {!validAttendanceThreshold && <p className="notice error">Enter an attendance criterion from 0 to 100.</p>}
+        {!dashboardLoading && !dashboardError && dashboard && <>
+          <p className="muted">
+            {!validAttendanceThreshold
+              ? 'Set a valid criterion to identify students below it.'
+              : dashboard.totalClasses === 0
+                ? 'Attendance percentages will be available after attendance is recorded.'
+                : `${studentsBelowCriterion.length} student${studentsBelowCriterion.length === 1 ? '' : 's'} below ${attendanceThreshold}%.`}
+          </p>
+          {dashboard.students.length === 0
+            ? <p className="muted">No students are enrolled in this class.</p>
+            : <div className="table-wrap">
+              <table>
+                <thead><tr>
+                  <th>Student number</th>
+                  <th>Student name</th>
+                  <th>Email</th>
+                  <th>Attendance</th>
+                  <th>Percentage</th>
+                  <th>Criterion</th>
+                </tr></thead>
+                <tbody>{dashboard.students.map(student => {
+                  const belowCriterion = validAttendanceThreshold &&
+                    dashboard.totalClasses > 0 &&
+                    student.attendancePercentage < attendanceThreshold;
+                  return <tr key={student.id}>
+                    <td>{student.student_number}</td>
+                    <td>{student.full_name}</td>
+                    <td>{student.email || '—'}</td>
+                    <td>{student.attendedClasses} / {dashboard.totalClasses}</td>
+                    <td>{dashboard.totalClasses > 0 ? `${student.attendancePercentage.toFixed(2)}%` : '—'}</td>
+                    <td>
+                      {dashboard.totalClasses === 0
+                        ? 'Not measured'
+                        : !validAttendanceThreshold
+                          ? 'Set criterion'
+                          : belowCriterion
+                            ? <span className="attendance-warning">Below criterion</span>
+                            : 'Meets criterion'}
+                    </td>
+                  </tr>;
+                })}</tbody>
+              </table>
+            </div>}
+        </>}
+      </section>}
 
       {message && <p className="notice">{message}</p>}
       {records.length > 0 && <>

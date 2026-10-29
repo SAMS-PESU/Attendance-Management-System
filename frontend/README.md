@@ -60,7 +60,13 @@ Open the URL printed by Vite (usually http://localhost:5173).
 - `POST /api/classes/:id/students/:studentId` — admin only
 - `POST /api/attendance?classId=1&date=2026-10-27` — teacher/admin marks attendance
 - `GET /api/attendance?classId=1&date=2026-10-27` — class/date attendance view
+- `GET /api/attendance/dashboard?classId=1` — assigned teacher's enrolled students and attendance percentages from saved records
 - `POST /api/attendance` prevents duplicate class/student/date rows via validation and a database unique constraint.
+
+The teacher dashboard defaults to a 75% attendance criterion, which can be adjusted on screen. Percentages use present attendance records divided by distinct class dates with saved attendance. A class with no saved attendance sessions is shown as not yet measured.
+
+## Pull-request checks
+The GitHub Actions workflow in `.github/workflows/ci.yml` runs for pull requests and pushes to `main`. It installs dependencies from each package lock file, runs the backend test suite, and builds the frontend. On a pull request, check the **Checks** tab for the `Backend tests` and `Frontend production build` results; open a failed job to see its error output.
 
 ## Security notes
 - Passwords are hashed with bcrypt.
