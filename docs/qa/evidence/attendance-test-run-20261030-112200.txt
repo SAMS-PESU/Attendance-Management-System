@@ -1,0 +1,115 @@
+SAMS attendance API test run - 2026-10-30 11:22:00
+Endpoint: POST and PATCH http://localhost:5000/api/attendance
+----------------------------------------------------------------------
+[PASS] TC-ATT-01  No token
+       request : POST
+       expected: HTTP 401 containing 'Authentication required'
+       actual  : HTTP 401 {"message":"Authentication required. No authorization header provided."}
+[PASS] TC-ATT-02  Student role
+       request : POST
+       expected: HTTP 403 containing ''
+       actual  : HTTP 403 {"message":"Forbidden: role 'student' is not authorized for this resource."}
+[PASS] TC-ATT-03  Class not assigned
+       request : POST
+       expected: HTTP 403 containing 'not assigned'
+       actual  : HTTP 403 {"message":"This class is not assigned to you."}
+[PASS] TC-ATT-04  Class does not exist
+       request : POST
+       expected: HTTP 403 containing 'not assigned'
+       actual  : HTTP 403 {"message":"This class is not assigned to you."}
+[PASS] TC-ATT-05  Invalid status 'late'
+       request : POST
+       expected: HTTP 400 containing 'status must be'
+       actual  : HTTP 400 {"message":"status must be 'present' or 'absent'."}
+[PASS] TC-ATT-06  Impossible date 2026-13-45
+       request : POST
+       expected: HTTP 400 containing 'date must be'
+       actual  : HTTP 400 {"message":"date must be a real date in YYYY-MM-DD format."}
+[PASS] TC-ATT-07  Wrong date format
+       request : POST
+       expected: HTTP 400 containing 'date must be'
+       actual  : HTTP 400 {"message":"date must be a real date in YYYY-MM-DD format."}
+[PASS] TC-ATT-08  Empty records
+       request : POST
+       expected: HTTP 400 containing 'non-empty array'
+       actual  : HTTP 400 {"message":"records must be a non-empty array."}
+[PASS] TC-ATT-09  Same student twice
+       request : POST
+       expected: HTTP 400 containing 'twice'
+       actual  : HTTP 400 {"message":"A student cannot appear twice in one request."}
+[PASS] TC-ATT-10  Missing classId
+       request : POST
+       expected: HTTP 400 containing 'classId'
+       actual  : HTTP 400 {"message":"classId must be a positive whole number."}
+[PASS] TC-ATT-11  Student not enrolled
+       request : POST
+       expected: HTTP 400 containing 'not enrolled'
+       actual  : HTTP 400 {"message":"One or more students are not enrolled in this class."}
+[PASS] TC-ATT-12  One enrolled, one not
+       request : POST
+       expected: HTTP 400 containing 'not enrolled'
+       actual  : HTTP 400 {"message":"One or more students are not enrolled in this class."}
+[PASS] TC-ATT-13  First save
+       request : POST
+       expected: HTTP 201 containing 'Attendance saved'
+       actual  : HTTP 201 {"message":"Attendance saved.","count":2}
+[PASS] TC-ATT-14  Exact repeat rejected
+       request : POST
+       expected: HTTP 409 containing 'already exists'
+       actual  : HTTP 409 {"message":"Attendance already exists for this class and date. Nothing was saved.","duplicateStudentIds":[1,2]}
+[PASS] TC-ATT-15  Different date allowed
+       request : POST
+       expected: HTTP 201 containing 'Attendance saved'
+       actual  : HTTP 201 {"message":"Attendance saved.","count":2}
+[PASS] TC-ATT-16  One student, new date
+       request : POST
+       expected: HTTP 201 containing 'Attendance saved'
+       actual  : HTTP 201 {"message":"Attendance saved.","count":1}
+[PASS] TC-ATT-17  Partial overlap rejected
+       request : POST
+       expected: HTTP 409 containing 'already exists'
+       actual  : HTTP 409 {"message":"Attendance already exists for this class and date. Nothing was saved.","duplicateStudentIds":[1]}
+[PASS] TC-ATT-19  Edit absent to present
+       request : PATCH
+       expected: HTTP 200 containing 'Attendance updated'
+       actual  : HTTP 200 {"message":"Attendance updated.","changed":1,"changes":[{"studentId":2,"from":"absent","to":"present"}]}
+[PASS] TC-ATT-20  Same value again is a no-op
+       request : PATCH
+       expected: HTTP 200 containing 'No changes'
+       actual  : HTTP 200 {"message":"No changes: records already had these values.","changed":0,"changes":[]}
+[PASS] TC-ATT-21  Edit two students at once
+       request : PATCH
+       expected: HTTP 200 containing 'Attendance updated'
+       actual  : HTTP 200 {"message":"Attendance updated.","changed":2,"changes":[{"studentId":1,"from":"present","to":"absent"},{"studentId":2,"from":"present","to":"absent"}]}
+[PASS] TC-ATT-22  Edit date with no records
+       request : PATCH
+       expected: HTTP 404 containing 'Mark it first'
+       actual  : HTTP 404 {"message":"No attendance recorded for one or more of these students on this date. Mark it first. Nothing was changed.","missingStudentIds":[1]}
+[PASS] TC-ATT-23  Edit is all-or-nothing
+       request : PATCH
+       expected: HTTP 404 containing 'Nothing was changed'
+       actual  : HTTP 404 {"message":"No attendance recorded for one or more of these students on this date. Mark it first. Nothing was changed.","missingStudentIds":[2]}
+[PASS] TC-ATT-24  Edit with invalid status
+       request : PATCH
+       expected: HTTP 400 containing 'status must be'
+       actual  : HTTP 400 {"message":"status must be 'present' or 'absent'."}
+[PASS] TC-ATT-25  Edit class not assigned
+       request : PATCH
+       expected: HTTP 403 containing 'not assigned'
+       actual  : HTTP 403 {"message":"This class is not assigned to you."}
+[PASS] TC-ATT-26  Edit as student role
+       request : PATCH
+       expected: HTTP 403 containing ''
+       actual  : HTTP 403 {"message":"Forbidden: role 'student' is not authorized for this resource."}
+[PASS] TC-ATT-27  Edit without token
+       request : PATCH
+       expected: HTTP 401 containing 'Authentication required'
+       actual  : HTTP 401 {"message":"Authentication required. No authorization header provided."}
+[PASS] TC-ATT-28  Marking still rejects duplicates after edits
+       request : POST
+       expected: HTTP 409 containing 'already exists'
+       actual  : HTTP 409 {"message":"Attendance already exists for this class and date. Nothing was saved.","duplicateStudentIds":[1,2]}
+----------------------------------------------------------------------
+Passed: 27   Failed: 0   Total: 27
+TC-ATT-29 (database check) is manual: run the SELECT from the evidence file in MySQL.
+Log saved to: attendance-test-run-20261030-112200.txt
