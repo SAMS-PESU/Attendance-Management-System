@@ -18,7 +18,7 @@
 | ID | Test | Input | Expected | Result | Evidence |
 |---|---|---|---|---|---|
 | TC-ATT-01 | No token | Valid body, no `Authorization` header | 401 `Authentication required.` | PASS | `evidence/test-run.png`, run log |
-| TC-ATT-02 | Wrong role | Valid body, student-role token | 403 `You do not have permission for this action.` | PASS | `evidence/test-run.png`, run log |
+| TC-ATT-02 | Wrong role | Valid body, student-role token | 403 `Forbidden: role 'student' is not authorized for this resource.` | PASS | `evidence/test-run.png`, run log |
 | TC-ATT-03 | Teacher not assigned to class | `classId: 2` | 403 `This class is not assigned to you.` | PASS | `evidence/test-run.png`, run log |
 | TC-ATT-04 | Class does not exist | `classId: 999` | 403, same message as TC-ATT-03 (does not reveal which class IDs exist) | PASS | `evidence/test-run.png`, run log |
 
