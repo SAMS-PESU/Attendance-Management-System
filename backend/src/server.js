@@ -5,6 +5,7 @@ import { pool } from './db.js';
 import authRoutes from './routes/auth.js';
 import classRoutes from './routes/classes.js';
 import attendanceRoutes from './routes/attendance.js';
+import attendanceMarkRoutes from './routes/attendanceMark.js';
 import adminRoutes from './routes/admin.js';
 
 dotenv.config();
@@ -21,6 +22,7 @@ app.get('/api/health', async (_req, res) => {
 });
 app.use('/api/auth', authRoutes);
 app.use('/api/classes', classRoutes);
+app.use('/api/attendance', attendanceMarkRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api', adminRoutes);
 app.use((err, _req, res, _next) => {
