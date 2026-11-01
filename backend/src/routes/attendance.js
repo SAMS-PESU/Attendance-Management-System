@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { authenticate, allowRoles } from '../middleware/auth.js';
+import { calculateAttendancePercentage } from '../utils/attendanceCalculator.js';
 
 const router = Router();
 router.use(authenticate);
@@ -46,49 +47,92 @@ router.get('/mine', async (req, res, next) => {
 
     const { classId, date } = req.query;
 
-    if (!classId || !date) {
+    if (!classId) {
       return res.status(400).json({
-        message: 'Class and date are required.'
+        message: 'Class is required.'
       });
     }
 
-    if (
-      !/^\d+$/.test(String(classId)) ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(String(date))
-    ) {
+    if (!/^\d+$/.test(String(classId)) || Number(classId) < 1) {
       return res.status(400).json({
-        message: 'Invalid class or date.'
+        message: 'Invalid class ID.'
       });
     }
 
-    const [rows] = await pool.execute(
-      `SELECT
-         c.id AS classId,
-         c.class_code AS classCode,
-         c.class_name AS className,
-         c.section,
-         a.attendance_date AS attendanceDate,
-         a.status
+    const numericClassId = Number(classId);
+
+    // Verify enrollment
+    const [enrollmentRows] = await pool.execute(
+      `SELECT s.id AS studentId, c.id AS classId, c.class_code AS classCode, c.class_name AS className, c.section
        FROM students s
        JOIN enrollments e ON e.student_id = s.id
        JOIN classes c ON c.id = e.class_id
-       LEFT JOIN attendance a
-         ON a.student_id = s.id
-         AND a.class_id = c.id
-         AND a.attendance_date = ?
-       WHERE s.user_id = ?
-         AND c.id = ?
-       LIMIT 1`,
-      [date, req.user.id, Number(classId)]
+       WHERE s.user_id = ? AND c.id = ?`,
+      [req.user.id, numericClassId]
     );
 
-    if (rows.length === 0) {
+    if (enrollmentRows.length === 0) {
       return res.status(404).json({
         message: 'You are not enrolled in this class.'
       });
     }
 
-    res.json(rows[0]);
+    const classInfo = enrollmentRows[0];
+
+    // Compute student's overall attendance stats for this class
+    const [summaryRows] = await pool.execute(
+      `SELECT
+         COUNT(DISTINCT attendance_date) AS totalClasses,
+         COUNT(DISTINCT CASE WHEN status = 'present' THEN attendance_date END) AS attendedClasses
+       FROM attendance
+       WHERE class_id = ?`,
+      [numericClassId]
+    );
+
+    // Attended sessions specifically for this student
+    const [studentSummaryRows] = await pool.execute(
+      `SELECT
+         COUNT(DISTINCT CASE WHEN a.status = 'present' THEN a.attendance_date END) AS attendedClasses
+       FROM attendance a
+       WHERE a.class_id = ? AND a.student_id = ?`,
+      [numericClassId, classInfo.studentId]
+    );
+
+    const totalClasses = Number(summaryRows[0]?.totalClasses || 0);
+    const attendedClasses = Number(studentSummaryRows[0]?.attendedClasses || 0);
+    const attendancePercentage = calculateAttendancePercentage(attendedClasses, totalClasses);
+
+    let specificDateRecord = null;
+    if (date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || !validDate(String(date))) {
+        return res.status(400).json({
+          message: 'Invalid date format (YYYY-MM-DD).'
+        });
+      }
+
+      const [dateRows] = await pool.execute(
+        `SELECT a.attendance_date AS attendanceDate, a.status
+         FROM attendance a
+         WHERE a.class_id = ? AND a.student_id = ? AND a.attendance_date = ?
+         LIMIT 1`,
+        [numericClassId, classInfo.studentId, date]
+      );
+      if (dateRows.length > 0) {
+        specificDateRecord = dateRows[0];
+      }
+    }
+
+    res.json({
+      classId: classInfo.classId,
+      classCode: classInfo.classCode,
+      className: classInfo.className,
+      section: classInfo.section,
+      attendanceDate: specificDateRecord ? specificDateRecord.attendanceDate : (date || null),
+      status: specificDateRecord ? specificDateRecord.status : null,
+      totalClasses,
+      attendedClasses,
+      attendancePercentage
+    });
   } catch (err) {
     next(err);
   }
@@ -139,9 +183,7 @@ router.get('/dashboard', allowRoles('teacher'), async (req, res, next) => {
         return {
           ...student,
           attendedClasses,
-          attendancePercentage: totalClasses === 0
-            ? 0
-            : Number(((attendedClasses / totalClasses) * 100).toFixed(2))
+          attendancePercentage: calculateAttendancePercentage(attendedClasses, totalClasses)
         };
       })
     });
