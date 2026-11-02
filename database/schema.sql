@@ -82,3 +82,20 @@ VALUES ('STU001', 'Demo Student One', 'student1@example.com'),
 INSERT IGNORE INTO enrollments (class_id, student_id)
 SELECT c.id, s.id FROM classes c JOIN students s
 WHERE c.class_code='CSE-A' AND s.student_number IN ('STU001','STU002');
+
+
+CREATE TABLE IF NOT EXISTS attendance_audit_log (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  attendance_id BIGINT UNSIGNED NOT NULL,
+  class_id BIGINT UNSIGNED NOT NULL,
+  student_id BIGINT UNSIGNED NOT NULL,
+  attendance_date DATE NOT NULL,
+  old_status ENUM('present','absent') NOT NULL,
+  new_status ENUM('present','absent') NOT NULL,
+  changed_by BIGINT UNSIGNED NOT NULL,
+  changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_audit_attendance (attendance_id),
+  INDEX idx_audit_class_date (class_id, attendance_date),
+  INDEX idx_audit_changed_at (changed_at),
+  CONSTRAINT fk_audit_changed_by FOREIGN KEY (changed_by) REFERENCES users(id)
+);
