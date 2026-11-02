@@ -1,0 +1,15 @@
+SAMS performance test run - 2026-11-02 08:55:04
+Class id 5, 30 timed requests per test, target: 95th percentile <= 3000 ms, sequential single user
+------------------------------------------------------------------------------
+Students in class: 60
+[PASS] TC-Perf-01a  Mark attendance, whole class (POST)
+       n=30  min 46 ms  avg 65 ms  p95 81 ms  max 85 ms  failed requests 0 
+[PASS] TC-Perf-01b  Edit attendance, whole class incl. audit rows (PATCH)
+       n=30  min 65 ms  avg 87 ms  p95 109 ms  max 112 ms  failed requests 0 
+[PASS] TC-Perf-02a  View attendance by class and date (GET)
+       n=30  min 16 ms  avg 31 ms  p95 50 ms  max 55 ms  failed requests 0 
+[PASS] TC-Perf-02b  Teacher dashboard with percentages (GET)
+       n=30  min 110 ms  avg 146 ms  p95 224 ms  max 362 ms  failed requests 0 
+------------------------------------------------------------------------------
+Passed: 4   Failed: 0   Total: 4
+Log saved to: perf-run-20261102-085503.txt

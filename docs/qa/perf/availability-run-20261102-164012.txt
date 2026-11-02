@@ -1,0 +1,7 @@
+Availability monitor started 2026-11-02 16:40:12: polling http://localhost:5000/api/health every 2 s for 60 s
+16:40:12  UP
+------------------------------------------------------------
+Polls: 30   Up: 30   Down: 0
+Availability over this window: 100.00 %   (monthly target: 99.5 %)
+Outages: 0   Longest outage: 0.0 s (resolution = polling interval)
+Log saved to: availability-run-20261102-164012.txt

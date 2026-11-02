@@ -1,0 +1,13 @@
+Recovery test started 2026-11-02 14:36:22, service MySQL80
+A line is printed whenever the HTTP codes change (0 = no answer).
+14:36:23  [healthy]  health=200  attendance-records=200
+14:36:38  >>> stopping MySQL service
+14:36:41  [mysql stopped]  health=503  attendance-records=500
+14:37:01  >>> starting MySQL service
+14:37:02  [mysql started]  health=200  attendance-records=200
+----------------------------------------------------------------
+Health check reported the outage while MySQL was stopped: yes
+Health check healthy again 0.0 s after MySQL was started
+Attendance records served again 0.0 s after MySQL was started
+Total time the API reported unavailable: 21.5 s (the Node server was not restarted)
+Log saved to: recovery-run-20261102-143622.txt
