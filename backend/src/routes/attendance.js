@@ -214,4 +214,148 @@ router.get('/', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+async function teacherHasClass(user, classId) {
+  if (user.role === 'admin') return true;
+  const [rows] = await pool.execute(
+    `SELECT 1
+     FROM teacher_classes tc
+     JOIN teachers t ON t.id = tc.teacher_id
+     WHERE t.user_id = ? AND tc.class_id = ?`,
+    [user.id, classId]
+  );
+  return rows.length > 0;
+}
+
+router.get('/student/:studentId', allowRoles('teacher', 'admin'), async (req, res, next) => {
+  try {
+    const studentId = Number(req.params.studentId);
+    const classId = Number(req.query.classId);
+
+    if (!Number.isInteger(studentId) || studentId < 1 ||
+        !Number.isInteger(classId) || classId < 1) {
+      return res.status(400).json({ message: 'studentId and classId must be positive whole numbers.' });
+    }
+
+    if (!(await teacherHasClass(req.user, classId))) {
+      return res.status(403).json({ message: 'This class is not assigned to you.' });
+    }
+
+    const [students] = await pool.execute(
+      `SELECT s.id AS studentId, s.student_number AS studentNumber, s.full_name AS fullName
+       FROM students s
+       JOIN enrollments e ON e.student_id = s.id
+       WHERE s.id = ? AND e.class_id = ?`,
+      [studentId, classId]
+    );
+    if (students.length === 0) {
+      return res.status(404).json({ message: 'Student is not enrolled in this class.' });
+    }
+
+    const [records] = await pool.execute(
+      `SELECT attendance_date AS attendanceDate, status
+       FROM attendance
+       WHERE class_id = ? AND student_id = ?
+       ORDER BY attendance_date DESC`,
+      [classId, studentId]
+    );
+
+    const [[totals]] = await pool.execute(
+      `SELECT COUNT(DISTINCT attendance_date) AS totalClasses
+       FROM attendance WHERE class_id = ?`,
+      [classId]
+    );
+
+    const totalClasses = Number(totals.totalClasses);
+    const attendedClasses = records.filter(r => r.status === 'present').length;
+
+    res.json({
+      ...students[0],
+      classId,
+      records,
+      totalClasses,
+      attendedClasses,
+      attendancePercentage: calculateAttendancePercentage(attendedClasses, totalClasses)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------
+// #11: Student views own attendance records and percentage
+// AMS-016 / AMS-010, TC-Att-04, TC-Calc-02
+// The student is always identified by the login token, never by the URL.
+// ---------------------------------------------------------------
+
+// GET /api/attendance/mine/summary: all my classes with percentage
+router.get('/mine/summary', allowRoles('student'), async (req, res, next) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT c.id AS classId, c.class_code AS classCode, c.class_name AS className,
+              c.section AS section,
+              (SELECT COUNT(DISTINCT a.attendance_date)
+                 FROM attendance a WHERE a.class_id = c.id) AS totalClasses,
+              (SELECT COUNT(*) FROM attendance a
+                 WHERE a.class_id = c.id AND a.student_id = s.id
+                   AND a.status = 'present') AS attendedClasses
+       FROM students s
+       JOIN enrollments e ON e.student_id = s.id
+       JOIN classes c ON c.id = e.class_id
+       WHERE s.user_id = ?
+       ORDER BY c.class_code`,
+      [req.user.id]
+    );
+
+    res.json(rows.map(r => {
+      const totalClasses = Number(r.totalClasses);
+      const attendedClasses = Number(r.attendedClasses);
+      return {
+        classId: r.classId,
+        classCode: r.classCode,
+        className: r.className,
+        section: r.section,
+        totalClasses,
+        attendedClasses,
+        attendancePercentage: calculateAttendancePercentage(attendedClasses, totalClasses)
+      };
+    }));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/attendance/mine/records?classId=1: my day-by-day records for one class
+router.get('/mine/records', allowRoles('student'), async (req, res, next) => {
+  try {
+    const classId = Number(req.query.classId);
+    if (!Number.isInteger(classId) || classId < 1) {
+      return res.status(400).json({ message: 'Invalid class ID.' });
+    }
+
+    const [enrolled] = await pool.execute(
+      `SELECT 1
+       FROM enrollments e
+       JOIN students s ON s.id = e.student_id
+       WHERE s.user_id = ? AND e.class_id = ?`,
+      [req.user.id, classId]
+    );
+    if (enrolled.length === 0) {
+      return res.status(404).json({ message: 'You are not enrolled in this class.' });
+    }
+
+    const [records] = await pool.execute(
+      `SELECT a.attendance_date AS attendanceDate, a.status AS status
+       FROM attendance a
+       JOIN students s ON s.id = a.student_id
+       WHERE s.user_id = ? AND a.class_id = ?
+       ORDER BY a.attendance_date DESC`,
+      [req.user.id, classId]
+    );
+
+    res.json({ classId, records });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
