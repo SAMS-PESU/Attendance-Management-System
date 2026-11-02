@@ -156,11 +156,18 @@ router.patch('/', allowRoles('teacher', 'admin'), async (req, res, next) => {
       }
     }
 
-    // marked_by is left alone: it stays the original marker
+        // marked_by is left alone: it stays the original marker.
+    // Each change is logged in the same transaction (SEC-005): no edit without an audit entry.
     for (const c of changes) {
       await connection.execute(
         `UPDATE attendance SET status = ? WHERE id = ?`,
         [c.to, c.attendanceId]
+      );
+      await connection.execute(
+        `INSERT INTO attendance_audit_log
+           (attendance_id, class_id, student_id, attendance_date, old_status, new_status, changed_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [c.attendanceId, id, c.studentId, date, c.from, c.to, req.user.id]
       );
     }
 
