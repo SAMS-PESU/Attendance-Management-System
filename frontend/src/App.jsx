@@ -1,6 +1,6 @@
 import AdminManagement from './AdminManagement.jsx';
 import { useEffect, useState } from 'react';
-
+import AdminDashboard from './AdminDashboard.jsx';
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const today = new Date().toISOString().slice(0, 10);
 
@@ -411,8 +411,11 @@ export default function App() {
       {!classes.length && <p className="notice">No classes are available for this account. Ask an administrator to create/assign a class and enrol students.</p>}
     </section>
 
-    {user.role === 'admin' && (
-      <AdminManagement token={token} />
+        {user.role === 'admin' && (
+      <>
+        <AdminDashboard token={token} />
+        <AdminManagement token={token} />
+      </>
     )}
 
     <footer>Sprint 1 starter · Please validate with your team's SRS and test plan.</footer>
