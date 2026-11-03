@@ -1,4 +1,5 @@
 import AdminManagement from './AdminManagement.jsx';
+import StudentSummary from './StudentSummary.jsx';
 import { useEffect, useState } from 'react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -19,6 +20,7 @@ export default function App() {
   const [date, setDate] = useState(today);
   const [records, setRecords] = useState([]);
   const [message, setMessage] = useState('');
+  const [isError, setIsError] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function request(path, options = {}) {
@@ -127,11 +129,13 @@ export default function App() {
 
   async function loadAttendance() {
     if (!classId || !date) {
+      setIsError(true);
       setMessage('Select a class and date.');
       return;
     }
 
     setBusy(true);
+    setIsError(false);
     setMessage('');
     setRecords([]);
 
@@ -170,6 +174,7 @@ export default function App() {
         );
       }
     } catch (err) {
+      setIsError(true);
       setMessage(err.message);
     } finally {
       setBusy(false);
@@ -182,16 +187,23 @@ export default function App() {
 
   async function saveAttendance() {
     const incomplete = records.filter(r => !r.status);
-    if (incomplete.length) return setMessage('Choose Present or Absent for every student before saving.');
+    if (incomplete.length) {
+      setIsError(true);
+      return setMessage(
+        `Choose Present or Absent for every student before saving (${incomplete.length} not marked, highlighted in yellow).`
+      );
+    }
     setBusy(true);
+    setIsError(false);
     setMessage('');
     try {
       const result = await request('/attendance', {
         method: 'POST',
         body: JSON.stringify({ classId: Number(classId), date, records: records.map(r => ({ studentId: r.studentId, status: r.status })) })
       });
-      setMessage(result.message);
+      setMessage(`✓ ${result.message}`);
     } catch (err) {
+      setIsError(true);
       setMessage(err.message);
     } finally {
       setBusy(false);
@@ -259,6 +271,7 @@ export default function App() {
         <button className="secondary" onClick={logout}>Sign out</button>
       </div>
     </header>
+    {user.role === 'student' && <StudentSummary token={token} />}
     <section className="panel">
       <h2>View attendance by class and date</h2>
       <p className="muted">Select a class and date to view or mark attendance for enrolled students.</p>
@@ -375,7 +388,11 @@ export default function App() {
         </>}
       </section>}
 
-      {message && <p className="notice">{message}</p>}
+      {message && (
+        <p className={isError ? 'notice error' : 'notice'} role={isError ? 'alert' : 'status'}>
+          {message}
+        </p>
+      )}
       {records.length > 0 && <>
         <div className="table-wrap">
           <table>
@@ -387,7 +404,7 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {records.map(r => <tr key={r.studentId}>
+              {records.map(r => <tr key={r.studentId} className={!r.status && user.role !== 'student' ? 'unmarked' : undefined}>
                 {user.role !== 'student' && <>
                   <td>{r.studentNumber}</td>
                   <td>{r.studentName}</td>
@@ -395,11 +412,20 @@ export default function App() {
                 {user.role === 'student' && <td>{r.classCode} — {r.className}</td>}
                 <td>
                   {user.role === 'teacher' || user.role === 'admin' ?
-                    <select value={r.status || ''} onChange={e => updateStatus(r.studentId, e.target.value)}>
-                      <option value="">Choose status</option>
-                      <option value="present">Present</option>
-                      <option value="absent">Absent</option>
-                    </select> :
+                    <div className="status-toggle" role="group" aria-label={`Attendance for ${r.studentName}`}>
+                      <button
+                        type="button"
+                        className={r.status === 'present' ? 'status-btn present active' : 'status-btn present'}
+                        aria-pressed={r.status === 'present'}
+                        onClick={() => updateStatus(r.studentId, 'present')}
+                      >Present</button>
+                      <button
+                        type="button"
+                        className={r.status === 'absent' ? 'status-btn absent active' : 'status-btn absent'}
+                        aria-pressed={r.status === 'absent'}
+                        onClick={() => updateStatus(r.studentId, 'absent')}
+                      >Absent</button>
+                    </div> :
                     (r.status || 'Not recorded')}
                 </td>
               </tr>)}
